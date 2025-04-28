@@ -258,19 +258,21 @@ class AIAnalyzer:
                         partial_data = ""
 
                         async for chunk in response.aiter_text():
+                            with open("ai_analysis.log", "a+", encoding="utf-8") as f:
+                                f.write(chunk)
+
                             if chunk:
                                 # 将新数据追加到缓存中
                                 partial_data += chunk
 
-                                # 检查数据是否为空
-                                if not partial_data.strip():
+                                if not partial_data.strip() or "[DONE]" in partial_data:
+                                    logger.info(
+                                        f"收到{'空行' if not partial_data.strip() else '流结束标记 [DONE]'}"
+                                    )
                                     continue
 
                                 # 尝试解析完整的JSON对象
                                 try:
-                                    if "[DONE]" in partial_data:
-                                        logger.info("收到流结束标记 [DONE]")
-                                        continue
                                     # 查找完整的JSON对象
                                     start = partial_data.find("{")
                                     end = partial_data.rfind("}") + 1
@@ -316,24 +318,37 @@ class AIAnalyzer:
 
                         # 确保缓存中的数据也被处理
                         if partial_data.strip():
-                            try:
-                                chunk_data = json.loads(partial_data)
-                                delta = chunk_data.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    chunk_count += 1
-                                    buffer += content
-                                    collected_messages.append(content)
-                                    yield json.dumps(
-                                        {
-                                            "stock_code": stock_code,
-                                            "ai_analysis_chunk": content,
-                                            "status": "analyzing",
-                                        }
-                                    )
-                            except json.JSONDecodeError as e:
-                                logger.warning(f"无法解析最后一行数据: {partial_data}")
-                                logger.exception(e)
+                            print(partial_data)
+                            if not partial_data.strip() or "[DONE]" in partial_data:
+                                logger.info(
+                                    f"收到{'空行' if not partial_data.strip() else '流结束标记 [DONE]'}"
+                                )
+                            else:
+                                start = partial_data.find("{")
+                                end = partial_data.rfind("}") + 1
+                                if start != -1 and end != -1:
+                                    partial_data = partial_data[start:end]
+                                    if partial_data:
+                                        try:
+                                            chunk_data = json.loads(partial_data)
+                                            delta = chunk_data.get("choices", [{}])[0].get(
+                                                "delta", {}
+                                            )
+                                            content = delta.get("content", "")
+                                            if content:
+                                                chunk_count += 1
+                                                buffer += content
+                                                collected_messages.append(content)
+                                                yield json.dumps(
+                                                    {
+                                                        "stock_code": stock_code,
+                                                        "ai_analysis_chunk": content,
+                                                        "status": "analyzing",
+                                                    }
+                                                )
+                                        except json.JSONDecodeError as e:
+                                            logger.warning(f"无法解析最后一行数据: {partial_data}")
+                                            logger.exception(e)
 
                     logger.info(
                         f"AI流式处理完成，共收到 {chunk_count} 个内容片段，总长度: {len(buffer)}"
