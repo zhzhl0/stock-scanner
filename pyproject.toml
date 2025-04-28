@@ -2,5 +2,31 @@
 name = "stock-scanner"
 version = "0.1.0"
 description = "Add your description here"
-requires-python = ">=3.10"
-dependencies = []
+requires-python = ">=3.10,<4.0.0"
+dependencies = [
+    "scipy (>=1.15.2,<2.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "akshare (>=1.16.81,<2.0.0)",
+    "fastapi (>=0.115.12,<0.116.0)",
+    "uvicorn[standard] (>=0.34.2,<0.35.0)",
+    "pydantic (>=2.11.3,<3.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)",
+    "loguru (>=0.7.3,<0.8.0)",
+    "matplotlib (>=3.10.1,<4.0.0)",
+    "seaborn (>=0.13.2,<0.14.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "html5lib (>=1.1,<2.0)",
+    "lxml (>=5.4.0,<6.0.0)",
+    "jsonpath (>=0.82.2,<0.83.0)",
+    "openpyxl (>=3.1.5,<4.0.0)",
+    "python-jose (>=3.4.0,<4.0.0)",
+    "passlib (>=1.7.4,<2.0.0)",
+    "cachetools (>=5.5.2,<6.0.0)",
+    "diskcache (>=5.6.3,<6.0.0)",
+]
+
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+priority = "primary"
