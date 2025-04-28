@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
+from services.a_stock_service import AStockServiceAsync
 from services.fund_service_async import FundServiceAsync
 from services.stock_analyzer_service import StockAnalyzerService
 from services.us_stock_service_async import USStockServiceAsync
@@ -52,6 +53,7 @@ app.add_middleware(
 # 初始化异步服务
 us_stock_service = USStockServiceAsync()
 fund_service = FundServiceAsync()
+a_stock_service = AStockServiceAsync()
 
 
 # 定义请求和响应模型
@@ -101,9 +103,11 @@ optional_oauth2_scheme = OptionalOAuth2PasswordBearer(tokenUrl="login")
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(datetime.timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(datetime.timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -154,9 +158,7 @@ async def login(request: LoginRequest):
 
     # 创建访问令牌
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": "user"}, expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": "user"}, expires_delta=access_token_expires)
     logger.info("用户登录成功")
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -197,9 +199,7 @@ async def analyze(request: AnalyzeRequest, username: str = Depends(verify_token)
                 f"后端去重: 从{original_count}个代码中移除了{original_count - len(stock_codes)}个重复项"
             )
 
-        logger.debug(
-            f"接收到分析请求: stock_codes={stock_codes}, market_type={market_type}"
-        )
+        logger.debug(f"接收到分析请求: stock_codes={stock_codes}, market_type={market_type}")
 
         # 获取自定义API配置
         custom_api_url = request.api_url
@@ -231,9 +231,7 @@ async def analyze(request: AnalyzeRequest, username: str = Depends(verify_token)
                 logger.info(f"开始单股流式分析: {stock_code}")
 
                 stock_code_json = json.dumps(stock_code)
-                init_message = (
-                    f'{{"stream_type": "single", "stock_code": {stock_code_json}}}\n'
-                )
+                init_message = f'{{"stream_type": "single", "stock_code": {stock_code_json}}}\n'
                 yield init_message
 
                 logger.debug(f"开始处理股票 {stock_code} 的流式响应")
@@ -246,17 +244,13 @@ async def analyze(request: AnalyzeRequest, username: str = Depends(verify_token)
                     chunk_count += 1
                     yield chunk + "\n"
 
-                logger.info(
-                    f"股票 {stock_code} 流式分析完成，共发送 {chunk_count} 个块"
-                )
+                logger.info(f"股票 {stock_code} 流式分析完成，共发送 {chunk_count} 个块")
             else:
                 # 批量分析流式处理
                 logger.info(f"开始批量流式分析: {stock_codes}")
 
                 stock_codes_json = json.dumps(stock_codes)
-                init_message = (
-                    f'{{"stream_type": "batch", "stock_codes": {stock_codes_json}}}\n'
-                )
+                init_message = f'{{"stream_type": "batch", "stock_codes": {stock_codes_json}}}\n'
                 yield init_message
 
                 logger.debug(f"开始处理批量股票的流式响应")
@@ -282,6 +276,22 @@ async def analyze(request: AnalyzeRequest, username: str = Depends(verify_token)
         logger.error(error_msg)
         logger.exception(e)
         raise HTTPException(status_code=500, detail=error_msg)
+
+
+# 搜索A股代码
+@app.get("/api/search_a_stocks")
+async def search_a_stocks(keyword: str = "", username: str = Depends(verify_token)):
+    try:
+        if not keyword:
+            raise HTTPException(status_code=400, detail="请输入搜索关键词")
+
+        # 直接使用异步服务的异步方法
+        results = await a_stock_service.search_a_stocks(keyword)
+        return {"results": results}
+
+    except Exception as e:
+        logger.error(f"搜索美股代码时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 搜索美股代码
@@ -354,9 +364,7 @@ async def get_fund_detail(
 
 # 测试API连接
 @app.post("/api/test_api_connection")
-async def test_api_connection(
-    request: TestAPIRequest, username: str = Depends(verify_token)
-):
+async def test_api_connection(request: TestAPIRequest, username: str = Depends(verify_token)):
     """测试API连接"""
     try:
         logger.info("开始测试API连接")
@@ -441,9 +449,7 @@ async def need_login():
 
 
 # 设置静态文件
-frontend_dist = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "frontend", "dist"
-)
+frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
 if os.path.exists(frontend_dist):
     # 直接挂载整个dist目录
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")

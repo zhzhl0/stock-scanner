@@ -1,6 +1,9 @@
 import asyncio
+from typing import Any, Dict, List
+
 import pandas as pd
-from typing import List, Dict, Any, Optional
+
+from utils.async_diskcache import async_diskcache
 from utils.logger import get_logger
 
 # 获取日志器
@@ -31,7 +34,7 @@ class USStockServiceAsync:
             logger.info(f"异步搜索美股: {keyword}")
 
             # 使用线程池执行同步的akshare调用
-            df = await asyncio.to_thread(self._get_us_stocks_data)
+            df = await self._get_us_stocks_data()
 
             # 模糊匹配搜索
             mask = df["name"].str.contains(keyword, case=False, na=False)
@@ -46,9 +49,7 @@ class USStockServiceAsync:
                         "symbol": str(row["symbol"]) if pd.notna(row["symbol"]) else "",
                         "price": float(row["price"]) if pd.notna(row["price"]) else 0.0,
                         "market_value": (
-                            float(row["market_value"])
-                            if pd.notna(row["market_value"])
-                            else 0.0
+                            float(row["market_value"]) if pd.notna(row["market_value"]) else 0.0
                         ),
                     }
                 )
@@ -56,9 +57,7 @@ class USStockServiceAsync:
                 if len(formatted_results) >= 10:
                     break
 
-            logger.info(
-                f"美股搜索完成，找到 {len(formatted_results)} 个匹配项（限制显示前10个）"
-            )
+            logger.info(f"美股搜索完成，找到 {len(formatted_results)} 个匹配项（限制显示前10个）")
             return formatted_results
 
         except Exception as e:
@@ -67,7 +66,8 @@ class USStockServiceAsync:
             logger.exception(e)
             raise Exception(error_msg)
 
-    def _get_us_stocks_data(self) -> pd.DataFrame:
+    @async_diskcache(expire=3600 * 12)
+    async def _get_us_stocks_data(self) -> pd.DataFrame:
         """
         获取美股数据（同步方法，将被异步方法调用）
 
@@ -78,7 +78,7 @@ class USStockServiceAsync:
 
         try:
             # 获取美股数据
-            df = ak.stock_us_spot_em()
+            df = await asyncio.to_thread(ak.stock_us_spot_em)
 
             # 转换列名
             df = df.rename(
@@ -150,19 +150,13 @@ class USStockServiceAsync:
                 "open": float(row["open"]) if pd.notna(row["open"]) else 0.0,
                 "high": float(row["high"]) if pd.notna(row["high"]) else 0.0,
                 "low": float(row["low"]) if pd.notna(row["low"]) else 0.0,
-                "pre_close": (
-                    float(row["pre_close"]) if pd.notna(row["pre_close"]) else 0.0
-                ),
+                "pre_close": (float(row["pre_close"]) if pd.notna(row["pre_close"]) else 0.0),
                 "market_value": (
                     float(row["market_value"]) if pd.notna(row["market_value"]) else 0.0
                 ),
-                "pe_ratio": (
-                    float(row["pe_ratio"]) if pd.notna(row["pe_ratio"]) else 0.0
-                ),
+                "pe_ratio": (float(row["pe_ratio"]) if pd.notna(row["pe_ratio"]) else 0.0),
                 "volume": float(row["volume"]) if pd.notna(row["volume"]) else 0.0,
-                "turnover": (
-                    float(row["turnover"]) if pd.notna(row["turnover"]) else 0.0
-                ),
+                "turnover": (float(row["turnover"]) if pd.notna(row["turnover"]) else 0.0),
             }
 
             logger.info(f"获取美股详情成功: {symbol}")

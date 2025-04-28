@@ -12,19 +12,19 @@
         <n-icon :component="SearchIcon" />
       </template>
     </n-input>
-    
+
     <div class="search-results mobile-search-results" v-show="showResults">
       <div v-if="loading" class="loading-results">
         <n-spin size="small" />
         <span>搜索中...</span>
       </div>
-      
+
       <div v-else-if="results.length === 0 && searchKeyword" class="no-results">
         未找到相关数据
       </div>
-      
+
       <template v-else>
-        <n-scrollbar style="max-height: 300px;">
+        <n-scrollbar style="max-height: 300px">
           <div
             v-for="item in results"
             :key="item.symbol"
@@ -33,7 +33,9 @@
           >
             <div class="result-symbol-name">
               <span class="result-symbol">{{ item.symbol }}</span>
-              <span class="result-name mobile-result-name">{{ item.name }}</span>
+              <span class="result-name mobile-result-name">{{
+                item.name
+              }}</span>
             </div>
             <div class="result-meta">
               <span class="result-market">{{ item.market }}</span>
@@ -49,22 +51,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { NInput, NIcon, NSpin, NScrollbar } from 'naive-ui';
-import { Search as SearchIcon } from '@vicons/ionicons5';
-import { apiService } from '@/services/api';
-import { debounce, formatMarketValue as formatMarketValueFn } from '@/utils';
-import type { SearchResult } from '@/types';
+import { ref, onMounted, onBeforeUnmount } from "vue";
+import { NInput, NIcon, NSpin, NScrollbar } from "naive-ui";
+import { Search as SearchIcon } from "@vicons/ionicons5";
+import { apiService } from "@/services/api";
+import { debounce, formatMarketValue as formatMarketValueFn } from "@/utils";
+import type { SearchResult } from "@/types";
 
 const props = defineProps<{
   marketType: string;
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', symbol: string): void;
+  (e: "select", symbol: string): void;
 }>();
 
-const searchKeyword = ref('');
+const searchKeyword = ref("");
 const results = ref<SearchResult[]>([]);
 const loading = ref(false);
 const showResults = ref(false);
@@ -79,21 +81,28 @@ const debouncedSearch = debounce(async (keyword: string) => {
   }
 
   loading.value = true;
-  
+
   try {
-    if (props.marketType === 'US') {
+    if (props.marketType === "US") {
       // 美股搜索
       const searchResults = await apiService.searchUsStocks(keyword);
       // 限制只显示前10个结果
       results.value = searchResults.slice(0, 10);
-    } else {
+    } else if (props.marketType === "ETF" || props.marketType === "LOF") {
       // 基金搜索
-      const searchResults = await apiService.searchFunds(keyword);
+      const searchResults = await apiService.searchFunds(
+        keyword,
+        props.marketType
+      );
+      // 限制只显示前10个结果
+      results.value = searchResults.slice(0, 10);
+    } else if (props.marketType === "A") {
+      const searchResults = await apiService.searchAStocks(keyword);
       // 限制只显示前10个结果
       results.value = searchResults.slice(0, 10);
     }
   } catch (error) {
-    console.error('搜索数据时出错:', error);
+    console.error("搜索数据时出错:", error);
     results.value = [];
   } finally {
     loading.value = false;
@@ -108,9 +117,9 @@ function handleSearchInput() {
 function selectStock(item: SearchResult) {
   // 处理symbol，确保不包含序号
   // 假设symbol格式可能是"1. AAPL"这样的格式，我们只需要"AAPL"部分
-  const cleanSymbol = item.symbol.replace(/^\d+\.\s*/, '');
-  emit('select', cleanSymbol);
-  searchKeyword.value = '';
+  const cleanSymbol = item.symbol.replace(/^\d+\.\s*/, "");
+  emit("select", cleanSymbol);
+  searchKeyword.value = "";
   showResults.value = false;
 }
 
@@ -142,11 +151,11 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
+  document.addEventListener("click", handleClickOutside);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener("click", handleClickOutside);
 });
 </script>
 
@@ -165,7 +174,8 @@ onBeforeUnmount(() => {
   margin-top: 0.25rem;
   background-color: var(--n-color);
   border-radius: 0.375rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--n-border-color);
 }
 
@@ -230,7 +240,7 @@ onBeforeUnmount(() => {
   .search-result-item:last-child {
     border-bottom: none;
   }
-  
+
   /* 确保输入框在移动端正确显示 */
   :deep(.n-input) {
     width: 100% !important;
@@ -238,18 +248,20 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 480px) {
-  .result-symbol-name, .result-meta {
+  .result-symbol-name,
+  .result-meta {
     font-size: 0.875rem;
   }
-  
-  .result-market, .result-market-value {
-    font-size: 0.75rem;
-  }
-  
-  .loading-results, .no-results {
-    padding: 0.75rem;
+
+  .result-market,
+  .result-market-value {
     font-size: 0.75rem;
   }
 
+  .loading-results,
+  .no-results {
+    padding: 0.75rem;
+    font-size: 0.75rem;
+  }
 }
 </style>
