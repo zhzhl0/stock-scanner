@@ -2,12 +2,17 @@ import json
 import os
 import re
 from datetime import datetime
+from json import decoder
 from typing import AsyncGenerator
 
 import httpx
 import pandas as pd
 from dotenv import load_dotenv
 
+from services.a_stock_service import AStockServiceAsync
+from services.fund_service_async import FundServiceAsync
+from services.hk_stock_service import HkStockServiceAsync
+from services.us_stock_service_async import USStockServiceAsync
 from utils.api_utils import APIUtils
 from utils.logger import get_logger
 
@@ -45,6 +50,11 @@ class AIAnalyzer:
         self.API_KEY = custom_api_key or os.getenv("API_KEY")
         self.API_MODEL = custom_api_model or os.getenv("API_MODEL", "gpt-3.5-turbo")
         self.API_TIMEOUT = int(custom_api_timeout or os.getenv("API_TIMEOUT", 60))
+
+        self.a_stock_service = AStockServiceAsync()
+        self.fund_service = FundServiceAsync()
+        self.us_stock_service = USStockServiceAsync()
+        self.hk_stock_service = HkStockServiceAsync()
 
         logger.debug(
             f"初始化AIAnalyzer: API_URL={self.API_URL}, API_MODEL={self.API_MODEL}, API_KEY={'已提供' if self.API_KEY else '未提供'}, API_TIMEOUT={self.API_TIMEOUT}"
@@ -106,6 +116,8 @@ class AIAnalyzer:
                 "rsi_level": df.iloc[-1]["RSI"],
             }
 
+            stock_name = None
+
             # 根据市场类型调整分析提示
             if market_type in ["ETF", "LOF"]:
                 prompt = f"""
@@ -127,6 +139,9 @@ class AIAnalyzer:
                 
                 请基于技术指标和市场表现进行分析，给出具体数据支持。
                 """
+                stock_name = await self.fund_service.get_fund_name_by_symbol(
+                    stock_code, market_type
+                )
             elif market_type == "US":
                 prompt = f"""
                 分析美股 {stock_code}：
@@ -147,6 +162,7 @@ class AIAnalyzer:
                 
                 请基于技术指标和美股市场特点进行分析，给出具体数据支持。
                 """
+                stock_name = await self.us_stock_service.get_name_by_symbol(stock_code)
             elif market_type == "HK":
                 prompt = f"""
                 分析港股 {stock_code}：
@@ -167,6 +183,7 @@ class AIAnalyzer:
                 
                 请基于技术指标和港股市场特点进行分析，给出具体数据支持。
                 """
+                stock_name = await self.hk_stock_service.get_name_by_symbol(stock_code)
             else:  # A股
                 prompt = f"""
                 分析A股 {stock_code}：
@@ -184,9 +201,11 @@ class AIAnalyzer:
                 4. 短期和中期目标价位
                 5. 关键技术位分析
                 6. 具体交易建议（包含止损位）
+                7. 做T操作建议
                 
                 请基于技术指标和A股市场特点进行分析，给出具体数据支持。
                 """
+                stock_name = await self.a_stock_service.get_name_by_symbol(stock_code)
 
             # 格式化API URL
             api_url = APIUtils.format_api_url(self.API_URL)
@@ -217,6 +236,7 @@ class AIAnalyzer:
                 yield json.dumps(
                     {
                         "stock_code": stock_code,
+                        "name": stock_name,
                         "status": "analyzing",
                         "rsi": rsi,
                         "price": price,
@@ -236,7 +256,16 @@ class AIAnalyzer:
                         if response.status_code != 200:
                             error_text = await response.aread()
                             error_data = json.loads(error_text)
-                            error_message = error_data.get("error", {}).get("message", "未知错误")
+                            if isinstance(error_data, dict):
+                                error_message = error_data.get("error", {}).get(
+                                    "message", "未知错误"
+                                )
+                            elif isinstance(error_data, list) and len(error_data) > 0:
+                                error_message = (
+                                    error_data[0].get("error", {}).get("message", "未知错误")
+                                )
+                            else:
+                                error_message = "未知错误"
                             logger.error(
                                 f"AI API请求失败: {response.status_code} - {error_message}"
                             )
@@ -257,98 +286,75 @@ class AIAnalyzer:
                         # 新增：用于缓存不完整的JSON数据
                         partial_data = ""
 
+                        decoder = json.JSONDecoder()
+
                         async for chunk in response.aiter_text():
-                            with open("ai_analysis.log", "a+", encoding="utf-8") as f:
-                                f.write(chunk)
+                            chunk = chunk.strip()
 
-                            if chunk:
-                                # 将新数据追加到缓存中
-                                partial_data += chunk
+                            if not chunk:
+                                # 如果是空字符串，继续等待更多数据
+                                logger.info("收到空行，继续等待更多数据")
+                                continue
 
-                                if not partial_data.strip() or "[DONE]" in partial_data:
-                                    logger.info(
-                                        f"收到{'空行' if not partial_data.strip() else '流结束标记 [DONE]'}"
-                                    )
-                                    continue
+                            # 将新数据追加到缓存中
+                            partial_data += chunk
 
-                                # 尝试解析完整的JSON对象
+                            partial_data = partial_data.replace("data: ", "")
+                            partial_data = partial_data.replace("null", '""')
+
+                            if not partial_data:
+                                # 如果缓存为空，继续等待更多数据
+                                logger.info("缓存为空，继续等待更多数据")
+                                continue
+
+                            # 查找完整的JSON对象
+                            idx = 0
+                            while partial_data.strip():
                                 try:
-                                    # 查找完整的JSON对象
-                                    start = partial_data.find("{")
-                                    end = partial_data.rfind("}") + 1
-                                    if start != -1 and end != -1:
-                                        json_str = partial_data[start:end]
-                                        if json_str:  # 确保不是空字符串
-                                            chunk_data = json.loads(json_str)
-                                            partial_data = partial_data[end:]  # 移除已处理的部分
+                                    # 尝试解析完整的JSON对象
+                                    chunk_data, end_idx = decoder.raw_decode(partial_data)
+                                    idx = end_idx  # 更新索引
+                                    partial_data = partial_data[idx:].lstrip()  # 移除已处理的部分
 
-                                            # 处理解析后的数据
-                                            finish_reason = chunk_data.get("choices", [{}])[0].get(
-                                                "finish_reason"
-                                            )
-                                            if finish_reason == "stop":
-                                                logger.debug("收到finish_reason=stop，流结束")
-                                                continue
+                                    if "[DONE]" in json.dumps(chunk_data):
+                                        logger.info("收到流结束标记 [DONE]")
+                                        continue
 
-                                            delta = chunk_data.get("choices", [{}])[0].get(
-                                                "delta", {}
-                                            )
-                                            if not delta or delta == {}:
-                                                logger.debug("收到空的delta对象，跳过")
-                                                continue
+                                    error_msg = chunk_data.get("error", {})
+                                    if error_msg:
+                                        logger.error(
+                                            f"AI API请求失败: {error_msg.get('code')} - {error_msg.get('message')}"
+                                        )
+                                        yield json.dumps(
+                                            {
+                                                "stock_code": stock_code,
+                                                "error": f"流式响应错误: {error_msg}",
+                                                "status": "error",
+                                            }
+                                        )
 
-                                            content = delta.get("content", "")
-                                            if content:
-                                                chunk_count += 1
-                                                buffer += content
-                                                collected_messages.append(content)
-                                                yield json.dumps(
-                                                    {
-                                                        "stock_code": stock_code,
-                                                        "ai_analysis_chunk": content,
-                                                        "status": "analyzing",
-                                                    }
-                                                )
+                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                    if not delta or delta == {}:
+                                        logger.debug("收到空的delta对象，跳过")
+                                        continue
+
+                                    content = delta.get("content", "")
+                                    if content:
+                                        chunk_count += 1
+                                        buffer += content
+                                        collected_messages.append(content)
+                                        yield json.dumps(
+                                            {
+                                                "stock_code": stock_code,
+                                                "ai_analysis_chunk": content,
+                                                "status": "analyzing",
+                                            }
+                                        )
                                 except json.JSONDecodeError as e:
                                     # 如果解析失败，继续等待更多数据
                                     logger.debug("解析JSON失败，继续等待更多数据")
-                                    logger.warning(f"当前缓存数据: {partial_data}")
-                                    logger.exception(e)
-                                    continue
-
-                        # 确保缓存中的数据也被处理
-                        if partial_data.strip():
-                            print(partial_data)
-                            if not partial_data.strip() or "[DONE]" in partial_data:
-                                logger.info(
-                                    f"收到{'空行' if not partial_data.strip() else '流结束标记 [DONE]'}"
-                                )
-                            else:
-                                start = partial_data.find("{")
-                                end = partial_data.rfind("}") + 1
-                                if start != -1 and end != -1:
-                                    partial_data = partial_data[start:end]
-                                    if partial_data:
-                                        try:
-                                            chunk_data = json.loads(partial_data)
-                                            delta = chunk_data.get("choices", [{}])[0].get(
-                                                "delta", {}
-                                            )
-                                            content = delta.get("content", "")
-                                            if content:
-                                                chunk_count += 1
-                                                buffer += content
-                                                collected_messages.append(content)
-                                                yield json.dumps(
-                                                    {
-                                                        "stock_code": stock_code,
-                                                        "ai_analysis_chunk": content,
-                                                        "status": "analyzing",
-                                                    }
-                                                )
-                                        except json.JSONDecodeError as e:
-                                            logger.warning(f"无法解析最后一行数据: {partial_data}")
-                                            logger.exception(e)
+                                    partial_data = partial_data[idx:].lstrip()  # 移除已处理的部分
+                                    break
 
                     logger.info(
                         f"AI流式处理完成，共收到 {chunk_count} 个内容片段，总长度: {len(buffer)}"
@@ -430,7 +436,8 @@ class AIAnalyzer:
                     )
 
         except Exception as e:
-            logger.error(f"AI分析出错: {str(e)}", exc_info=True)
+            logger.error(f"AI分析出错: {str(e)}")
+            logger.exception(e)
             yield json.dumps(
                 {
                     "stock_code": stock_code,
