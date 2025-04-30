@@ -1,15 +1,16 @@
 import json
 
-buffer = 'data: {"choices":[{"delta":{"content":"后轻仓追多。\n*   **止损位：** 建议将止损位设置在 5.40 元附近，一旦跌破此位置，应果断止损。\n\n**A股市场特点补充说明**\n\n*   A股市场受政策影响较大，注意","role":"assistant"},"index":0}],"created":1745835935,"model":"gemini-2.0-flash","object":"chat.completion.chunk"}'
+buffer = '{"id":"019680d31034795677186adbd981a91d","object":"chat.completion.chunk","created":1745918038,"model":"deepseek-ai/DeepSeek-V3","choices":[{"index":0,"delta":{"content":"5.","reasoning_content":""},"finish_reason":""}],"system_fingerprint":"","usage":{"prompt_tokens":3996,"completion_tokens":204,"total_tokens":4200}}{"id":"019680d31034795677186adbd981a91d","object":"chat.completion.chunk","created":1745918038,"model":"deepseek-ai/DeepSeek-V3","choices":[{"index":0,"delta":{"content":"47元","reasoning_content":""},"finish_reason":""}],"system_fingerprint":"","usage":{"prompt_tokens":3996,"completion_tokens":206,"total_tokens":4202}}{"id":"019680d31034795677186adbd981a91d","object":"chat.completion.chunk","created":1745918038,"model":"deepseek-ai/DeepSeek-V3","choices":[{"index":0,"delta":{"content":"）才能","reasoning_content":""},"finish_reason":""}],"system_fingerprint":"","usage":{"prompt_tokens":3996,"completion_tokens":208,"total_tokens":4204}}{"id":"019680d31034795677186adbd981a91d","object":"chat.completion.chunk","created":1745918038,"model":"deepseek-ai/DeepSeek-V3","choices":[{"index":0,"delta":{"content":"确认上升","reasoning_content":""},"finish_reason":""}],"system_fingerprint":"","usage":{"prompt_tokens":3996,"completion_tokens":210,"total_tokens":4206}}'
 decoder = json.JSONDecoder()
 
-buffer = buffer[6:]
+# buffer = buffer[6:]
 
-print(buffer)
+# print(buffer)
 
 while buffer.strip():
-    # obj, idx = decoder.raw_decode(buffer)
-    # print("Parsed object:", obj)
-    # buffer = buffer[idx:].lstrip()  # 移除已解析部分
-    _j = json.loads(buffer)
-    print(_j)
+    obj, idx = decoder.raw_decode(buffer)
+    # 格式化输出
+    print(f"============================{idx}==========================")
+    print(json.dumps(obj, indent=4, ensure_ascii=False))
+    print("======================================================")
+    buffer = buffer[idx:].lstrip()  # 移除已解析部分
