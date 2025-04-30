@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -21,6 +22,7 @@ from services.hk_stock_service import HkStockServiceAsync
 from services.stock_analyzer_service import StockAnalyzerService
 from services.us_stock_service_async import USStockServiceAsync
 from utils.api_utils import APIUtils
+from utils.cache_manager import CacheManagerAsync
 from utils.logger import get_logger
 from utils.trading_calendar import cal
 
@@ -35,13 +37,63 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 10080  # Token过期时间一周
 
 LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD", "")
-print(LOGIN_PASSWORD)
 
 # 是否需要登录
 REQUIRE_LOGIN = bool(LOGIN_PASSWORD.strip())
 
+# 初始化异步服务
+us_stock_service = USStockServiceAsync()
+fund_service = FundServiceAsync()
+a_stock_service = AStockServiceAsync()
+hk_stock_service = HkStockServiceAsync()
 
-app = FastAPI(title="Stock Scanner API", description="异步股票分析API", version="1.0.0")
+# 初始化缓存管理器
+cache_manager = CacheManagerAsync()
+
+# 初始化job
+cache_manager.add_cache_task(
+    func=us_stock_service._get_us_stocks_data,
+    interval_minutes=35,
+    task_name="us_stocks_data",
+)
+cache_manager.add_cache_task(
+    func=hk_stock_service._get_hk_stocks_data,
+    interval_minutes=32,
+    task_name="hk_stocks_data",
+)
+cache_manager.add_cache_task(
+    func=fund_service._get_etf_data,
+    interval_minutes=30,
+    task_name="etf_data",
+)
+cache_manager.add_cache_task(
+    func=fund_service._get_lof_data,
+    interval_minutes=28,
+    task_name="lof_data",
+)
+cache_manager.add_cache_task(
+    func=a_stock_service._get_a_stocks_data,
+    interval_minutes=25,
+    task_name="a_stocks_data",
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动缓存管理器
+    await cache_manager.start()
+    logger.info("✅ 定时任务已启动")
+
+    yield
+
+    # 关闭缓存管理器
+    await cache_manager.stop()
+    logger.info("🛑 定时任务已停止")
+
+
+app = FastAPI(
+    title="Stock Scanner API", description="异步股票分析API", version="1.0.0", lifespan=lifespan
+)
 
 # 添加CORS中间件
 app.add_middleware(
@@ -51,12 +103,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# 初始化异步服务
-us_stock_service = USStockServiceAsync()
-fund_service = FundServiceAsync()
-a_stock_service = AStockServiceAsync()
-hk_stock_service = HkStockServiceAsync()
 
 
 # 定义请求和响应模型
