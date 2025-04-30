@@ -2,7 +2,6 @@ import json
 import os
 import re
 from datetime import datetime
-from json import decoder
 from typing import AsyncGenerator
 
 import httpx
