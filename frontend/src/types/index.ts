@@ -27,7 +27,7 @@ export interface StockInfo {
   changePercent?: number;
   marketValue?: number;
   analysis?: string;
-  analysisStatus: 'waiting' | 'analyzing' | 'completed' | 'error';
+  analysisStatus: "waiting" | "analyzing" | "completed" | "error";
   error?: string;
   score?: number;
   recommendation?: string;
@@ -84,7 +84,7 @@ export interface TestApiResponse {
 
 // 流式响应类型
 export interface StreamInitMessage {
-  stream_type: 'single' | 'batch';
+  stream_type: "single" | "batch";
   stock_code?: string;
   stock_codes?: string[];
 }
@@ -92,7 +92,7 @@ export interface StreamInitMessage {
 export interface StreamAnalysisUpdate {
   stock_code: string;
   analysis?: string;
-  status: 'analyzing' | 'completed' | 'error';
+  status: "analyzing" | "completed" | "error";
   error?: string;
   name?: string;
   price?: number;
