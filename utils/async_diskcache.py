@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import pickle
 from functools import wraps
 from typing import Any, Callable, Optional
 
@@ -41,7 +43,8 @@ def async_diskcache(
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
             # 生成唯一缓存键（基于函数名和参数）
-            cache_key = f"{key_prefix}{func.__name__}_{str(args)}_{str(kwargs)}"
+            key_data = pickle.dumps((func.__name__, args, frozenset(kwargs.items())))
+            cache_key = f"{key_prefix}{hashlib.md5(key_data).hexdigest()}"
 
             # 尝试从缓存读取
             cached_value = await cache.get(cache_key)
