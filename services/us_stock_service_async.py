@@ -167,3 +167,29 @@ class USStockServiceAsync:
             logger.error(error_msg)
             logger.exception(e)
             raise Exception(error_msg)
+
+    @async_diskcache()
+    async def get_name_by_symbol(self, symbol: str) -> str:
+        """
+        根据股票代码获取股票名称
+        Args:
+            symbol: 股票代码
+        Returns:
+            股票名称
+        """
+        try:
+            logger.info(f"根据股票代码获取股票名称: {symbol}")
+            # 使用线程池执行同步的akshare调用
+            df = await self._get_us_stocks_data()
+            # 查找股票名称
+            name = df.loc[df["symbol"] == symbol, "name"].values
+            if len(name) > 0:
+                logger.info(f"股票名称获取完成: {name[0]}")
+                return name[0]
+            else:
+                logger.warning(f"未找到股票代码: {symbol} 的名称")
+                return ""
+        except Exception as e:
+            error_msg = f"获取股票名称失败: {str(e)}"
+            logger.error(error_msg)
+            logger.exception(e)

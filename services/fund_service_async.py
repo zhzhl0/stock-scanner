@@ -231,3 +231,30 @@ class FundServiceAsync:
             logger.error(error_msg)
             logger.exception(e)
             raise Exception(error_msg)
+
+    @async_diskcache()
+    async def get_fund_name_by_symbol(self, symbol: str, market_type: str = "ETF") -> str:
+        """
+        根据基金代码获取基金名称
+        Args:
+            symbol: 基金代码
+            market_type: 市场类型，'ETF'或'LOF'
+        Returns:
+            基金名称
+        """
+        try:
+            logger.info(f"根据基金代码获取基金名称: {symbol}, 类型: {market_type}")
+            # 获取基金数据
+            df = await self._get_funds_data(market_type)
+            # 查找基金名称
+            name = df.loc[df["symbol"] == symbol, "name"].values
+            if len(name) > 0:
+                logger.info(f"基金名称获取完成: {name[0]}")
+                return name[0]
+            else:
+                logger.warning(f"未找到基金代码: {symbol} 的名称")
+                return ""
+        except Exception as e:
+            error_msg = f"获取基金名称失败: {str(e)}"
+            logger.error(error_msg)
+            logger.exception(e)
