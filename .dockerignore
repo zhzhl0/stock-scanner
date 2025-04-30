@@ -1,0 +1,15 @@
+node_modules
+*.pyc
+__pycache__
+env/
+.git/
+*.log
+*.sqlite
+*.sqlite3
+.venv/
+.github/
+.env
+.env.*
+cache/
+**/node_modules
+diff.txt
