@@ -122,10 +122,24 @@ export const apiService = {
       });
       return response.data.results || [];
     } catch (error) {
-      console.error("搜索美股时出错:", error);
+      console.error("搜索A股时出错:", error);
       return [];
     }
   },
+
+  // 搜索A股
+  searchHkStocks: async (keyword: string): Promise<SearchResult[]> => {
+    try {
+      const response = await axiosInstance.get("/search_hk_stocks", {
+        params: { keyword },
+      });
+      return response.data.results || [];
+    } catch (error) {
+      console.error("搜索港股时出错:", error);
+      return [];
+    }
+  },
+
   // 搜索美股
   searchUsStocks: async (keyword: string): Promise<SearchResult[]> => {
     try {
@@ -152,6 +166,19 @@ export const apiService = {
     } catch (error) {
       console.error("搜索基金时出错:", error);
       return [];
+    }
+  },
+
+  // 判断是否交易日
+  isTradingDay: async (date: string, market_type: string): Promise<boolean> => {
+    try {
+      const response = await axiosInstance.get("/is_trading_day", {
+        params: { date, market_type },
+      });
+      return response.data.is_trading_day;
+    } catch (error) {
+      console.error("判断是否交易日时出错:", error);
+      return false;
     }
   },
 
