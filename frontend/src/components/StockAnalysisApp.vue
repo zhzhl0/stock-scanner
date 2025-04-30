@@ -502,7 +502,7 @@ function handleStreamInit(data: StreamInitMessage) {
     analyzedStocks.value = [
       {
         code: data.stock_code,
-        name: "",
+        name: "未知股票",
         marketType: marketType.value,
         analysisStatus: "waiting",
       },
@@ -511,7 +511,7 @@ function handleStreamInit(data: StreamInitMessage) {
     // 批量分析
     analyzedStocks.value = data.stock_codes.map((code) => ({
       code,
-      name: "",
+      name: "未知股票",
       marketType: marketType.value,
       analysisStatus: "waiting",
     }));

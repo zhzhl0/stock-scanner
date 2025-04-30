@@ -100,6 +100,10 @@ const debouncedSearch = debounce(async (keyword: string) => {
       const searchResults = await apiService.searchAStocks(keyword);
       // 限制只显示前10个结果
       results.value = searchResults.slice(0, 10);
+    } else if (props.marketType === "HK") {
+      const searchResults = await apiService.searchHkStocks(keyword);
+      // 限制只显示前10个结果
+      results.value = searchResults.slice(0, 10);
     }
   } catch (error) {
     console.error("搜索数据时出错:", error);
