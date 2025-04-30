@@ -51,6 +51,27 @@ export function parseMarkdown(text: string): string {
   }
 }
 
+// 获取缓存的交易日数据
+export function get_cached_trading_days(): string[] | null {
+  const cachedData = localStorage.getItem("tradingDays");
+  if (cachedData) {
+    const { data, expiration } = JSON.parse(cachedData);
+    if (Date.now() < expiration) {
+      return data;
+    }
+  }
+  return null;
+}
+
+// 缓存交易日数据
+export function cache_trading_days(tradingDays: string[]): void {
+  const expiration = Date.now() + 1 * 60 * 60 * 1000; // 1小时后过期
+  localStorage.setItem(
+    "tradingDays",
+    JSON.stringify({ data: tradingDays, expiration })
+  );
+}
+
 // 更新市场时间信息
 export async function updateMarketTimeInfo(): Promise<MarketTimeInfo> {
   const now = new Date();
@@ -97,11 +118,22 @@ export async function updateMarketTimeInfo(): Promise<MarketTimeInfo> {
   const usMinute = parseInt(usMin, 10);
   const dateStrUS = `${usY}-${usM}-${usD}`;
 
-  // 并发请求中美交易日信息
-  const [cnIsTradingDay, usIsTradingDay] = await Promise.all([
-    apiService.isTradingDay(dateStrCN, "CN"),
-    apiService.isTradingDay(dateStrUS, "US"),
-  ]);
+  // 优先从缓存中获取交易日信息
+  const cachedTradingDays = get_cached_trading_days();
+  const [cnIsTradingDay, usIsTradingDay] = cachedTradingDays
+    ? [
+        cachedTradingDays.includes(dateStrCN),
+        cachedTradingDays.includes(dateStrUS),
+      ]
+    : await Promise.all([
+        apiService.isTradingDay(dateStrCN, "CN"),
+        apiService.isTradingDay(dateStrUS, "US"),
+      ]);
+
+  // 如果没有缓存，则更新缓存
+  if (!cachedTradingDays) {
+    cache_trading_days([dateStrCN, dateStrUS]);
+  }
 
   // A股市场状态
   const cnMarketOpen =
