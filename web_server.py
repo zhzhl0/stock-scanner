@@ -1,7 +1,7 @@
 import json
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import httpx
@@ -17,10 +17,12 @@ from pydantic import BaseModel
 
 from services.a_stock_service import AStockServiceAsync
 from services.fund_service_async import FundServiceAsync
+from services.hk_stock_service import HkStockServiceAsync
 from services.stock_analyzer_service import StockAnalyzerService
 from services.us_stock_service_async import USStockServiceAsync
 from utils.api_utils import APIUtils
 from utils.logger import get_logger
+from utils.trading_calendar import cal
 
 load_dotenv()
 
@@ -54,6 +56,7 @@ app.add_middleware(
 us_stock_service = USStockServiceAsync()
 fund_service = FundServiceAsync()
 a_stock_service = AStockServiceAsync()
+hk_stock_service = HkStockServiceAsync()
 
 
 # 定义请求和响应模型
@@ -103,11 +106,9 @@ optional_oauth2_scheme = OptionalOAuth2PasswordBearer(tokenUrl="login")
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(datetime.timezone.utc) + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(datetime.timezone.utc) + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -290,7 +291,23 @@ async def search_a_stocks(keyword: str = "", username: str = Depends(verify_toke
         return {"results": results}
 
     except Exception as e:
-        logger.error(f"搜索美股代码时出错: {str(e)}")
+        logger.error(f"搜索A股代码时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 搜索港股代码
+@app.get("/api/search_hk_stocks")
+async def search_hk_stocks(keyword: str = "", username: str = Depends(verify_token)):
+    try:
+        if not keyword:
+            raise HTTPException(status_code=400, detail="请输入搜索关键词")
+
+        # 直接使用异步服务的异步方法
+        results = await hk_stock_service.search_hk_stocks(keyword)
+        return {"results": results}
+
+    except Exception as e:
+        logger.error(f"搜索港股代码时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -446,6 +463,22 @@ async def test_api_connection(request: TestAPIRequest, username: str = Depends(v
 async def need_login():
     """检查是否需要登录"""
     return {"require_login": REQUIRE_LOGIN}
+
+
+# 是否交易日
+@app.get("/api/is_trading_day")
+async def is_trading_day(date: str, market: str = "CN", username: str = Depends(verify_token)):
+    """检查是否为交易日"""
+    try:
+        market = market.upper()
+        market = market if market in ["CN", "US", "HK"] else "CN"
+        # 调用服务方法
+        is_trading = cal.is_trading_day(date, market)
+        return {"is_trading_day": is_trading}
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="无效的日期格式，请使用 YYYY-MM-DD 或 YYYYMMDD 格式"
+        )
 
 
 # 设置静态文件
